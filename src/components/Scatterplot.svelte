@@ -1,350 +1,231 @@
 <script>
-    import { onMount } from 'svelte';
-    import { scaleLinear, scaleOrdinal } from 'd3-scale';
-    import { max, min } from 'd3-array';
-    import DetailCard from './DetailCard.svelte';
-    import { schemeCategory10 } from 'd3-scale-chromatic';
-    
-    export let data = [];
-    export let domainColumn = "";
-    export let opacity = 1;
-    export let selectedValues = new Set();
-    export let searchQuery = ""; 
-    export let showAnnotations = true;
-    export let highlightedData = [];
-    export let startDate = null;  // Add these new props
-    export let endDate = null;    // Add these new props
+  import { onMount, onDestroy } from 'svelte';
+  import DetailCard from './DetailCard.svelte';
+  import { schemeCategory10 } from 'd3-scale-chromatic';
+  import { scaleLinear, scaleOrdinal } from 'd3-scale';
+  import { min, max } from 'd3-array';
+  import reglConstructor from 'regl';
 
+  export let data = [];
+  export let domainColumn = "";
+  export let opacity = 1;
+  export let selectedValues = new Set();
+  export let searchQuery = "";
+  export let highlightedData = [];
+  export let startDate = null;
+  export let endDate = null;
 
-    let annotations = [
-        { x: 500, y: 400, radius: 30, label: "Border Belt Independent and North Carolina Coastal Federation have both published about GenX — an industrial chemical.", label_x: -400, label_y: -80 },
-        { x: 720, y: 170, radius: 50, label: "Only Carolina Peacemaker seems to be publishing about personal health.", label_x: -100, label_y: 130 }
-    ];
+  let canvas;
+  let regl;
+  let drawPoints;
+  let hoveredData = null;
+  let containerWidth = 800;
+  let containerHeight = 600;
+  const radius = 6;
 
-    let canvas;
-    let ctx;
-    
-    let containerWidth = 800;
-    let containerHeight = 600;
-    
-    const margin = { top: 20, right: 20, bottom: 20, left: 20 };
-    const radius = 6;
-    
-    let hoveredData = null;
-    let lastHoveredData = null;
-    let zoomScale = 1;
-    let zoomCenter = { x: 0, y: 0 };
-    $: highlightedSet = new Set(highlightedData.map(d => d.id));
+  $: highlightedSet = new Set(highlightedData.map(d => d.id));
+  $: xDomain = [min(data, d => d.x), max(data, d => d.x)];
+  $: yDomain = [min(data, d => d.y), max(data, d => d.y)];
+  $: xScale = scaleLinear()
+    .domain(xDomain[0] === xDomain[1] ? [xDomain[0] - 1, xDomain[1] + 1] : xDomain)
+    .range([0, containerWidth]);
+  $: yScale = scaleLinear()
+    .domain(yDomain[0] === yDomain[1] ? [yDomain[0] - 1, yDomain[1] + 1] : yDomain)
+    .range([containerHeight, 0]);
+  $: colorScale = scaleOrdinal()
+    .domain([...new Set(data.map(d => d[domainColumn]))])
+    .range(schemeCategory10);
 
+  // --- OPTIMIZED: Use Typed Arrays for WebGL attributes ---
+  let positions = null;
+  let colors = null;
 
-    
-    $: innerWidth = containerWidth - margin.left - margin.right;
-    $: innerHeight = containerHeight - margin.top - margin.bottom;
-    
-    $: xScale = scaleLinear()
-      .domain([min(data, d => d.x), max(data, d => d.x)])
-      .range([0, innerWidth]);
-    
-    $: yScale = scaleLinear()
-      .domain([min(data, d => d.y), max(data, d => d.y)])
-      .range([innerHeight, 0]);
-    
-    const colorScale = scaleOrdinal()
-      .domain([...new Set(data.map(d => d[domainColumn]))])
-      .range(schemeCategory10);
-    
-    function draw() {
-      if (!ctx || !data.length) return;
-      
-      // Check if full date range is selected
-      const isFullDateRange = startDate?.getTime() === Math.min(...data.map(d => d.date.getTime())) &&
-                             endDate?.getTime() === Math.max(...data.map(d => d.date.getTime()));
+  $: if (data.length) {
+    // First, count how many points will be drawn (all points, but selected last)
+    // We'll use two passes: non-selected, then selected
+    const nonSelected = [];
+    const selected = [];
 
-                             
-      ctx.clearRect(0, 0, containerWidth, containerHeight);
-      ctx.save();
-      ctx.translate(zoomCenter.x, zoomCenter.y);
-      ctx.scale(zoomScale, zoomScale);
-      ctx.translate(-zoomCenter.x, -zoomCenter.y);
+    // Precompute min/max for date only once
+    const dateTimes = data.map(d => d.date.getTime());
+    const minDate = Math.min(...dateTimes);
+    const maxDate = Math.max(...dateTimes);
 
-      // Draw data points
-      // data.forEach(d => {
-      //   const matchesSearch = searchQuery && d.title?.toLowerCase().includes(searchQuery.toLowerCase());
-      //   const isHighlighted = highlightedSet.has(d.id) || matchesSearch;
-      //   const isSelected = selectedValues.has(d[domainColumn]);
-      //   const isInDateRange = (!startDate || d.date >= startDate) && 
-      //                        (!endDate || d.date <= endDate);
+    for (let i = 0; i < data.length; ++i) {
+      const d = data[i];
+      const matchesSearch = searchQuery && d.title?.toLowerCase().includes(searchQuery.toLowerCase());
+      const isHighlighted = highlightedSet.has(d.id) || matchesSearch;
+      const isSelected = selectedValues.has(d[domainColumn]);
+      const isInDateRange = (!startDate || d.date >= startDate) && (!endDate || d.date <= endDate);
+      const isFullDateRange = startDate?.getTime() === minDate && endDate?.getTime() === maxDate;
 
-      //   ctx.beginPath();
-      //   ctx.arc(margin.left + xScale(d.x), margin.top + yScale(d.y), radius, 0, Math.PI * 2);
-      //   ctx.fillStyle = colorScale(d[domainColumn]);
-        
-      //   // Set opacity based on conditions
-      //   if (isInDateRange && !isFullDateRange) {
-      //     ctx.globalAlpha = 1;
-      //   } else if ((isHighlighted || isSelected) && isFullDateRange) {
-      //     ctx.globalAlpha = 1;
-      //   } else {
-      //     ctx.globalAlpha = opacity * 0.2;
-      //   }
-
-      //   ctx.fill();
-
-      // });
-
-      data.forEach(d => {
-        const matchesSearch = searchQuery && d.title?.toLowerCase().includes(searchQuery.toLowerCase());
-        const isHighlighted = highlightedSet.has(d.id) || matchesSearch;
-        const isSelected = selectedValues.has(d[domainColumn]);
-        const isInDateRange = (!startDate || d.date >= startDate) && 
-                            (!endDate || d.date <= endDate);
-
-        ctx.beginPath();
-        ctx.arc(margin.left + xScale(d.x), margin.top + yScale(d.y), radius, 0, Math.PI * 2);
-        ctx.fillStyle = colorScale(d[domainColumn]);
-        
-        // Set opacity based on conditions
-        if ((isHighlighted || isSelected) && isInDateRange && !isFullDateRange) {
-          // Show points that match both filters at full opacity
-          ctx.globalAlpha = 1;
-        } else if (isInDateRange && !isFullDateRange && selectedValues.size === 0) {
-          // If only date range is active (no highlights selected), show all points in range
-          ctx.globalAlpha = 1;
-        } else if ((isHighlighted || isSelected) && isFullDateRange) {
-          // If only highlights are active (full date range), show highlighted points
-          ctx.globalAlpha = 1;
-        } else {
-          // Dim all other points
-          ctx.globalAlpha = opacity * 0.2;
-        }
-        
-        ctx.fill();
-      });
-
-
-      // Draw annotations only if showAnnotations is true
-      if (showAnnotations) {
-        annotations.forEach(annotation => {
-          ctx.globalAlpha = 1;
-
-          // Draw annotation circle
-          ctx.beginPath();
-          ctx.arc(annotation.x, annotation.y, annotation.radius, 0, Math.PI * 2);
-          ctx.strokeStyle = "red";
-          ctx.lineWidth = 2;
-          ctx.setLineDash([5, 5]);
-          ctx.stroke();
-
-          // Set text properties for measuring
-          const maxWidth = 180; // Maximum width for the label
-          const lineHeight = 12; // Line height for wrapped text
-          ctx.font = "16px Arial";
-          
-          // Calculate label bounding box
-          const labelX = annotation.x + annotation.label_x;
-          const labelY = annotation.y + annotation.label_y;
-          
-          // Determine text bounds by measuring and wrapping text
-          let textWidth = 0;
-          let textHeight = 0;
-          let lines = [];
-          let currentLine = "";
-          
-          // Process text wrapping to calculate height and width
-          if (annotation.label) {
-            const words = annotation.label.split(" ");
-            let line = "";
-            
-            words.forEach((word, index) => {
-              const testLine = line + word + " ";
-              const testWidth = ctx.measureText(testLine).width;
-              
-              if (testWidth > maxWidth && index > 0) {
-                lines.push(line);
-                textWidth = Math.max(textWidth, ctx.measureText(line).width);
-                line = word + " ";
-              } else {
-                line = testLine;
-              }
-            });
-            
-            lines.push(line);
-            textWidth = Math.max(textWidth, ctx.measureText(line).width);
-            textHeight = lineHeight * lines.length;
-          }
-          
-          // Label rectangle bounds
-          const rectX = labelX;
-          const rectY = labelY - lineHeight; // Offset to account for text baseline
-          const rectWidth = textWidth;
-          const rectHeight = textHeight;
-          
-          // Find closest point on the rectangle to the circle center
-          // First determine which side of the rectangle is closest to the circle center
-          let closestX, closestY;
-          
-          // Calculate x-coordinate of closest point
-          if (annotation.x < rectX) {
-            closestX = rectX;
-          } else if (annotation.x > rectX + rectWidth) {
-            closestX = rectX + rectWidth;
-          } else {
-            closestX = annotation.x;
-          }
-          
-          // Calculate y-coordinate of closest point
-          if (annotation.y < rectY) {
-            closestY = rectY;
-          } else if (annotation.y > rectY + rectHeight) {
-            closestY = rectY + rectHeight;
-          } else {
-            closestY = annotation.y;
-          }
-          
-          // Calculate the starting point of the line on the circle's outline
-          const angle = Math.atan2(closestY - annotation.y, closestX - annotation.x);
-          const startX = annotation.x + annotation.radius * Math.cos(angle);
-          const startY = annotation.y + annotation.radius * Math.sin(angle);
-
-          // Draw line connecting the circle outline to the closest point on the rectangle
-          ctx.setLineDash([]); // Solid line for the connector
-          ctx.beginPath();
-          ctx.moveTo(startX, startY);
-          ctx.lineTo(closestX, closestY);
-          ctx.strokeStyle = "red";
-          ctx.lineWidth = 1;
-          ctx.stroke();
-
-          // Draw label with wrapping
-          if (annotation.label) {
-            ctx.font = "16px Arial";
-            ctx.fillStyle = "red";
-            // increase line height between lines of t3ext
-            const lineHeight = 16; // Adjusted line height for better readability
-
-            // Draw each line of text
-            lines.forEach((line, index) => {
-              ctx.fillText(line, labelX, labelY + index * lineHeight);
-            });
-          }
-        });
+      let alpha = opacity;
+      if ((isHighlighted || isSelected) && isInDateRange && !isFullDateRange) {
+        alpha = 1;
+      } else if (isInDateRange && !isFullDateRange && selectedValues.size === 0) {
+        alpha = 1;
+      } else if ((isHighlighted || isSelected) && isFullDateRange) {
+        alpha = 1;
       }
 
-      ctx.setLineDash([]); // Reset line dash
-
-      if (hoveredData) {
-        ctx.beginPath();
-        ctx.arc(margin.left + xScale(hoveredData.x), margin.top + yScale(hoveredData.y), radius, 0, Math.PI * 2);
-        ctx.fillStyle = colorScale(hoveredData[domainColumn]);
-        ctx.globalAlpha = 1;
-        ctx.fill();
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-
-      ctx.restore();
-    }
-    
-    function handleMouseMove(event) {
-      const rect = canvas.getBoundingClientRect();
-      
-      // Calculate scaling ratio between internal canvas dimensions and displayed dimensions
-      const scaleX = containerWidth / rect.width;
-      const scaleY = containerHeight / rect.height;
-      
-      // Adjust mouse coordinates based on the scaling ratio
-      const mouseX = (event.clientX - rect.left) * scaleX - margin.left;
-      const mouseY = (event.clientY - rect.top) * scaleY - margin.top;
-    
-      const adjustedX = (mouseX - zoomCenter.x) / zoomScale + zoomCenter.x;
-      const adjustedY = (mouseY - zoomCenter.y) / zoomScale + zoomCenter.y;
-    
-      const foundData = data.find(d => {
-        const dx = xScale(d.x) - adjustedX;
-        const dy = yScale(d.y) - adjustedY;
-        const isInRange = Math.sqrt(dx * dx + dy * dy) < radius + 3;
-
-        // Check if point is currently highlighted based on filters
-        const matchesSearch = searchQuery && d.title?.toLowerCase().includes(searchQuery.toLowerCase());
-        const isHighlighted = highlightedSet.has(d.id) || matchesSearch;
-        const isSelected = selectedValues.has(d[domainColumn]);
-        const isInDateRange = (!startDate || d.date >= startDate) && 
-                             (!endDate || d.date <= endDate);
-        const isFullDateRange = startDate?.getTime() === Math.min(...data.map(d => d.date.getTime())) &&
-                               endDate?.getTime() === Math.max(...data.map(d => d.date.getTime()));
-
-        // Allow hovering in default state or if point matches filters
-        const isDefaultState = selectedValues.size === 0 || 
-                             selectedValues.size === new Set(data.map(d => d[domainColumn])).size;
-        const isVisible = isDefaultState || 
-                         ((isHighlighted || isSelected) && isInDateRange && !isFullDateRange) ||
-                         (isInDateRange && !isFullDateRange && selectedValues.size === 0) ||
-                         ((isHighlighted || isSelected) && isFullDateRange);
-
-        return isInRange && isVisible;
-      });
-
-      if (foundData) {
-        hoveredData = foundData;
-        lastHoveredData = foundData;
+      const color = colorScale(d[domainColumn]) || '#1f77b4';
+      let rgb;
+      if (color.startsWith('#')) {
+        rgb = [
+          parseInt(color.slice(1, 3), 16) / 255,
+          parseInt(color.slice(3, 5), 16) / 255,
+          parseInt(color.slice(5, 7), 16) / 255
+        ];
+      } else if (color.startsWith('rgb')) {
+        const nums = color.match(/\d+/g).map(Number);
+        rgb = [nums[0] / 255, nums[1] / 255, nums[2] / 255];
       } else {
-        hoveredData = null;
-        lastHoveredData = null;
+        rgb = [31 / 255, 119 / 255, 180 / 255];
       }
 
-      draw();
+      const point = {
+        x: 2 * xScale(d.x) / containerWidth - 1,
+        y: 1 - 2 * yScale(d.y) / containerHeight,
+        rgb,
+        alpha
+      };
+
+      // If selected/highlighted, push to selected, else nonSelected
+      if (alpha === 1) {
+        selected.push(point);
+      } else {
+        nonSelected.push(point);
+      }
     }
-    
-    function handleMouseLeave() {
-      hoveredData = lastHoveredData;
-      draw();
+
+    // Combine: non-selected first, then selected
+    const allPoints = [...selected, ...nonSelected];
+    positions = new Float32Array(allPoints.length * 2);
+    colors = new Float32Array(allPoints.length * 4);
+
+    for (let i = 0; i < allPoints.length; ++i) {
+      const p = allPoints[i];
+      positions[2 * i] = p.x;
+      positions[2 * i + 1] = p.y;
+      colors[4 * i] = p.rgb[0];
+      colors[4 * i + 1] = p.rgb[1];
+      colors[4 * i + 2] = p.rgb[2];
+      colors[4 * i + 3] = p.alpha;
     }
-    
-    onMount(() => {
-      ctx = canvas.getContext('2d');
-      draw();
+  }
+
+  function drawWebGL() {
+    if (!regl || !positions || !colors) return;
+    regl.clear({ color: [1, 1, 1, 1], depth: 1 });
+    drawPoints({
+      position: positions,
+      color: colors,
+      count: positions.length / 2 // or allPoints.length
     });
-    
-    $: if (ctx && data.length) {
-        draw();
+  }
+
+  onMount(() => {
+    regl = reglConstructor({ canvas });
+    drawPoints = regl({
+      vert: `
+        precision mediump float;
+        attribute vec2 position;
+        attribute vec4 color;
+        varying vec4 fragColor;
+        void main() {
+          fragColor = color;
+          gl_Position = vec4(position, 0, 1);
+          gl_PointSize = ${radius * 2}.0;
+        }
+      `,
+      frag: `
+        precision mediump float;
+        varying vec4 fragColor;
+        void main() {
+          float r = length(gl_PointCoord - 0.5);
+          if (r > 0.5) discard;
+          gl_FragColor = fragColor;
+        }
+      `,
+      attributes: {
+        position: { buffer: regl.prop('position'), size: 2 },
+        color: { buffer: regl.prop('color'), size: 4 }
+      },
+      count: regl.prop('count'),
+      primitive: 'points'
+    });
+    drawWebGL();
+  });
+
+  $: if (regl && positions && colors) {
+    drawWebGL();
+  }
+
+  onDestroy(() => {
+    if (regl) regl.destroy();
+  });
+
+  // --- OPTIMIZED: Throttle hover handler ---
+  let lastHover = 0;
+  function handleMouseMove(event) {
+    const now = performance.now();
+    if (now - lastHover < 30) return;
+    lastHover = now;
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = (event.clientX - rect.left) * (containerWidth / rect.width);
+    const mouseY = (event.clientY - rect.top) * (containerHeight / rect.height);
+
+    let found = null;
+    let minDist = radius + 3;
+    for (let i = 0; i < data.length; ++i) {
+      // Use screen coordinates for hover
+      const px = xScale(data[i].x);
+      const py = yScale(data[i].y);
+      const dx = px - mouseX;
+      const dy = py - mouseY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDist) {
+        found = data[i];
+        minDist = dist;
+      }
     }
-    
-    $: if (ctx) {
-        opacity, selectedValues, searchQuery, showAnnotations, domainColumn, startDate, endDate; // Watch these props
-        if (data.length) draw(); // Redraw when any of these change
-    }
+    hoveredData = found;
+  }
+
+  // function handleMouseLeave() {
+  //   hoveredData = null;
+  // }
 </script>
 
 <div class="chart-container">
-    <canvas
-      bind:this={canvas}
-      width={containerWidth}
-      height={containerHeight}
-      on:mousemove={handleMouseMove}
-      on:mouseleave={handleMouseLeave}
-    ></canvas>
-    {#if hoveredData}
-      <DetailCard {hoveredData} {data} {domainColumn} {colorScale} />
-    {/if}
+  <canvas
+    bind:this={canvas}
+    width={containerWidth}
+    height={containerHeight}
+    style="width: {containerWidth}px; height: {containerHeight}px; display: block;"
+    on:mousemove={handleMouseMove}
+  />
+  {#if hoveredData}
+    <DetailCard {hoveredData} {data} {domainColumn} {colorScale} />
+  {/if}
 </div>
 
 <style>
-    .chart-container {
-      position: relative;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      width: 100%;
-      height: 100%;
-    }
-  
-    canvas {
-      cursor: crosshair;
-      border-radius: 8px;
-      background-color: white;
-      max-width: 100%;
-      height: auto;
-    }
+  .chart-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+  }
+  canvas {
+    cursor: crosshair;
+    border-radius: 8px;
+    background-color: white;
+    max-width: 100%;
+    height: auto;
+  }
 </style>

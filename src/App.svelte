@@ -222,15 +222,15 @@
 <!-- App Layout -->
 <div class="container">
   <div class="title-section">
-    <h1 class="title">Interactive Semantic Map [DEMO]</h1>
-    <p class="subtitle">The default semantic map contains data from three organizations in North Carolina. <a href = "https://peacemakeronline.com/">Carolina Peacemaker</a> and <a href = "https://borderbelt.org">Border Belt</a> are local news organizations and <a href= "https://www.nccoast.org/about-us/">NC Coastal Federation</a> is a nonprofit focused on coastal restoration.</p>
+    <!-- <h1 class="title">Interactive Semantic Map [DEMO]</h1> -->
+    <!-- <p class="subtitle">The default semantic map contains data from three organizations in North Carolina. <a href = "https://peacemakeronline.com/">Carolina Peacemaker</a> and <a href = "https://borderbelt.org">Border Belt</a> are local news organizations and <a href= "https://www.nccoast.org/about-us/">NC Coastal Federation</a> is a nonprofit focused on coastal restoration.</p> -->
   </div>
 
   <div class="content">
     <!-- Filters Panel -->
     <div class="filter-panel">
 
-      <div class="nerd-box">
+      <!-- <div class="nerd-box">
         <details close>
           <summary>➕ What is a Semantic Map?</summary>
           <div class="nerd-box-content">
@@ -251,7 +251,7 @@
             </ul>
           </div>
         </details>
-      </div>
+      </div> -->
 
       <label for="file-upload">📁 Upload CSV:</label>
       <input id="file-upload" type="file" accept=".csv" on:change={handleFileUpload} />
