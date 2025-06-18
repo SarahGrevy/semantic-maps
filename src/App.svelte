@@ -4,9 +4,9 @@
   import Scatterplot from './components/Scatterplot.svelte';
   import RangeSlider from './components/RangeSlider.svelte';
 
-  let data = [], columns = [], domainColumn = "org", uniqueValues = [];
+  let data = [], columns = [], domainColumn = "currentStatus", uniqueValues = [];
   let selectedValues = new Set(); 
-  let opacity = 0.5, startDate = null, endDate = null;
+  let opacity = 0.4, startDate = null, endDate = null;
   let filteredData = [], allDates = [];
   let startDateIndex = 0;
   let endDateIndex = 0;
@@ -15,33 +15,36 @@
   let highlightedData = [];
   $: highlightedSet = new Set(highlightedData.map(d => d.id));
 
+  // Cleans the current status options//
+  function formatLabel(value) {
+  return value
+    .toLowerCase()
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 
   let searchQuery = "";
   let showAnnotations = true;
 
   $: filteredData = data.map(d => ({
-    ...d,
-    isHighlighted: 
-      (selectedValues.size > 0 && selectedValues.size < uniqueValues.length) && 
-      selectedValues.has(d[domainColumn]) &&
-      (!startDate || d.date >= startDate) &&
-      (!endDate || d.date <= endDate)
-  }));
+  ...d,
+  isHighlighted:
+    (selectedValues.size > 0 && selectedValues.size < uniqueValues.length) &&
+    selectedValues.has(d[domainColumn]) &&
+    (!startDate || d.date >= startDate) &&
+    (!endDate || d.date <= endDate),
+  isVisible:
+    !searchQuery ||
+    (d.text && d.text.toLowerCase().includes(searchQuery.toLowerCase()))
+}));
 
 
   $: startPercent = allDates.length > 1 ? (startDateIndex / (allDates.length - 1)) * 100 : 0;
   $: endPercent = allDates.length > 1 ? (endDateIndex / (allDates.length - 1)) * 100 : 100;
 
-  onMount(async () => {
-    const response = await fetch('/semantic-maps/data.csv');
-    const csvText = await response.text();
-    parseCSV(csvText);
-
-    return () => {
-      if (playInterval) clearInterval(playInterval);
-    };
-  });
-
+ 
   function parseCSV(csvText) {
     const result = Papa.parse(csvText, { header: true });
     data = result.data.filter(d => d.x && d.y && d.date)
@@ -61,13 +64,6 @@
     if (domainColumn) {
       uniqueValues = [...new Set(data.map(d => d[domainColumn]).filter(Boolean))];
     }
-  }
-
-  function handleDomainChange(event) {
-    domainColumn = event.target.value;
-    uniqueValues = domainColumn ? [...new Set(data.map(d => d[domainColumn]).filter(Boolean))] : [];
-    selectedValues = new Set();
-    showAnnotations = false;
   }
 
   function handleSelectionChange(event) {
@@ -209,6 +205,8 @@
     }
   }
 
+  
+
   function handleSearch(event) {
     searchQuery = event.target.value;
     showAnnotations = false;
@@ -217,6 +215,78 @@
   function handleOpacityChange() {
     showAnnotations = false;
   }
+
+  let selectedYear = '2023'; // Default year
+
+  let selectedMonth = null; // null until selected
+
+    const monthOptions = [
+      { name: "January", value: 0 },
+      { name: "February", value: 1 },
+      { name: "March", value: 2 },
+      { name: "April", value: 3 },
+      { name: "May", value: 4 },
+      { name: "June", value: 5 },
+      { name: "July", value: 6 },
+      { name: "August", value: 7 },
+      { name: "September", value: 8 },
+      { name: "October", value: 9 },
+      { name: "November", value: 10 },
+      { name: "December", value: 11 },
+    ];
+
+
+  async function loadYearAndMonth(year, month) {
+  selectedYear = year;
+  selectedMonth = month;
+
+  if (!year || month === null) return; // Wait until both are selected
+
+  const response = await fetch(`/semantic-maps/${year}.csv`);
+  const csvText = await response.text();
+  parseCSV(csvText);
+
+  // Filter to only selected month
+  data = data.filter(d => {
+    const date = new Date(d.date);
+    return date.getMonth() === month && date.getFullYear() === +year;
+  });
+
+  // Recalculate after filtering
+  allDates = [...new Set(data.map(d => d.date.getTime()))]
+    .sort((a, b) => a - b)
+    .map(t => new Date(t));
+
+    // Set initial date range to first week of the month
+  if (allDates.length > 0) {
+    const firstDay = allDates[0];
+    const firstWeekEnd = new Date(firstDay);
+    firstWeekEnd.setDate(firstDay.getDate() + 1); // End of first week
+
+    // Ensure end date doesn't exceed available dates
+    startDate = firstDay;
+    endDate = allDates.find(d => d >= firstWeekEnd) || allDates[allDates.length - 1];
+
+    // Update indices
+    startDateIndex = 0;
+    endDateIndex = allDates.findIndex(d => d.getTime() >= endDate.getTime());
+    if (endDateIndex === -1) endDateIndex = allDates.length - 1;
+  } else {
+    // Fallback if no dates are available
+    startDate = null;
+    endDate = null;
+    startDateIndex = 0;
+    endDateIndex = 0;
+  }
+}
+
+
+  onMount(() => {
+    return () => {
+      if (playInterval) clearInterval(playInterval);
+    };
+  });
+
 </script>
 
 <!-- App Layout -->
@@ -230,56 +300,54 @@
     <!-- Filters Panel -->
     <div class="filter-panel">
 
-      <!-- <div class="nerd-box">
-        <details close>
-          <summary>➕ What is a Semantic Map?</summary>
-          <div class="nerd-box-content">
-            <p>
-              Semantic maps are tools that allow users to visually explore how different topics and ideas are connected. 
-              By analyzing the relationships between articles, these maps can reveal patterns and clusters in the data.
-            </p>
-            <p>
-              Each dot in this semantic map represents an article. When the dots are closer together, the articles are similar in meaning.
-            </p>
-            <p>
-              Newsrooms can use semantic maps to:
-            </p>
-            <ul>
-              <li>Audit their coverage by identifying themes that may be underrepresented or overlooked.</li>
-              <li>Track how their editorial focus evolves over time.</li>
-              <li>Discover which topics are being covered by other outlets, offering opportunities to adjust their editorial focus or collaborate.</li>
-            </ul>
-          </div>
-        </details>
-      </div> -->
+       <div class="nerd-box">
+  <details close>
+    <summary>➕ What is a Semantic Map?</summary>
+      <div class="nerd-box-content">
+        <p>
+          A semantic map is a visual tool that helps you explore how different Community Notes relate to one another based on their meaning and content.
+          By analyzing language patterns, the map groups similar notes together, revealing clusters, trends, and thematic connections.
+        </p>
+        <p>
+          Each dot on the map represents a single Community Note. Dots that are closer together correspond to notes that are more similar in meaning.
+        </p>
+        <p>
+          Journalists, researchers, and curious observers can use the semantic map to:
+        </p>
+        <ul>
+          <li>Spot common themes or narratives addressed by notes on X</li>
+          <li>Track how public discourse and fact-checking trends evolve over time</li>
+        </ul>
 
-      <label for="file-upload">📁 Upload CSV:</label>
-      <input id="file-upload" type="file" accept=".csv" on:change={handleFileUpload} />
-      
-      <label for="search-input">🔍 Search Title:</label>
-      <input id="search-input" type="text" placeholder="Search..." on:input={handleSearch} />
+      </div>
+    </details>
+  </div>
 
-      {#if columns.length}
-        <label for="domain-column">🎨 Color by Column:</label>
-        <select id="domain-column" on:change={handleDomainChange} bind:value={domainColumn}>
-          <option value="" disabled>Select column</option>
-          {#each columns as column}
-            <option value={column}>{column}</option>
+
+      <div>
+        <!-- Year Selection -->
+        <label>Select Year:</label>
+        <div class="year-buttons">
+          {#each ['2023', '2022', '2021'] as year}
+            <button 
+              class:selected={selectedYear === year}
+              on:click={() => loadYearAndMonth(year, selectedMonth)}
+            >
+              {year}
+            </button>
+          {/each}
+        </div>
+
+        <!-- Month Selection -->
+        <label>Select Month:</label>
+        <select on:change={(e) => loadYearAndMonth(selectedYear, +e.target.value)}>
+          <option value="" disabled selected>Select a month</option>
+          {#each monthOptions as { name, value }}
+            <option value={value} selected={selectedMonth === value}>{name}</option>
           {/each}
         </select>
-      {/if}
 
-      {#if uniqueValues.length}
-        <label for="value-select">✨ Highlight Values:</label>
-        <select id="value-select" multiple size="5" class="multi-select" on:change={handleSelectionChange}>
-          {#each uniqueValues as value}
-            <option value={value}>{value}</option>
-          {/each}
-        </select>
-      {/if}
-
-      <label for="opacity-slider">💡 Adjust Opacity:</label>
-      <input id="opacity-slider" type="range" min="0.01" max="1" step="0.1" bind:value={opacity} on:input={handleOpacityChange} />
+      </div>
 
       <div class="date-controls">
         <label for="start-date">📅 Date Range:</label>
@@ -314,6 +382,29 @@
           <button on:click={() => shiftDateRange(7)}>+1W</button>
         </div>
       </div>
+
+
+      <label for="file-upload">📁 Upload CSV:</label>
+      <input id="file-upload" type="file" accept=".csv" on:change={handleFileUpload} />
+      
+      <label for="search-input">🔍 Search Notes:</label>
+      <input id="search-input" type="text" placeholder="Search..." on:input={handleSearch} />
+
+      {#if uniqueValues.length}
+        <label for="value-select">✨ Status of Notes:</label>
+        <select id="value-select" multiple size="5" class="multi-select" on:change={handleSelectionChange}>
+          {#each uniqueValues as value}
+            <option value={value}>{formatLabel(value)}</option>
+          {/each}
+        </select>
+      {/if}
+      
+
+
+      <label for="opacity-slider">💡 Adjust Opacity:</label>
+      <input id="opacity-slider" type="range" min="0.01" max="1" step="0.1" bind:value={opacity} on:input={handleOpacityChange} />
+      
+      
     </div>
 
     <div class="scatterplot-container">
@@ -494,5 +585,26 @@
   .nerd-box-content li {
     margin-bottom: 0.5rem; /* Add spacing between list items */
     color: #444;
+  }
+
+    .year-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .year-buttons button {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    background: #eee;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .year-buttons button.selected {
+    background-color: #4c8bf5;
+    color: white;
+    font-weight: bold;
   }
 </style>

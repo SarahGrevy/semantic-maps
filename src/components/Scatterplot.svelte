@@ -42,7 +42,6 @@
 
   $: if (data.length) {
     // First, count how many points will be drawn (all points, but selected last)
-    // We'll use two passes: non-selected, then selected
     const nonSelected = [];
     const selected = [];
 
@@ -53,14 +52,16 @@
 
     for (let i = 0; i < data.length; ++i) {
       const d = data[i];
-      const matchesSearch = searchQuery && d.title?.toLowerCase().includes(searchQuery.toLowerCase());
-      const isHighlighted = highlightedSet.has(d.id) || matchesSearch;
+      const isHighlighted = highlightedSet.has(d.id) || d.isHighlighted;
       const isSelected = selectedValues.has(d[domainColumn]);
       const isInDateRange = (!startDate || d.date >= startDate) && (!endDate || d.date <= endDate);
       const isFullDateRange = startDate?.getTime() === minDate && endDate?.getTime() === maxDate;
+      const isVisible = d.isVisible; // Use isVisible from parent
 
       let alpha = opacity;
-      if ((isHighlighted || isSelected) && isInDateRange && !isFullDateRange) {
+      if (!isVisible) {
+        alpha = 0; // Hide points that don't match the search
+      } else if ((isHighlighted || isSelected) && isInDateRange && !isFullDateRange) {
         alpha = 1;
       } else if (isInDateRange && !isFullDateRange && selectedValues.size === 0) {
         alpha = 1;
@@ -90,7 +91,7 @@
         alpha
       };
 
-      // If selected/highlighted, push to selected, else nonSelected
+      // If visible or selected/highlighted, push to selected for rendering on top
       if (alpha === 1) {
         selected.push(point);
       } else {
@@ -120,7 +121,7 @@
     drawPoints({
       position: positions,
       color: colors,
-      count: positions.length / 2 // or allPoints.length
+      count: positions.length / 2
     });
   }
 
@@ -179,7 +180,7 @@
     let found = null;
     let minDist = radius + 3;
     for (let i = 0; i < data.length; ++i) {
-      // Use screen coordinates for hover
+      if (!data[i].isVisible) continue; // Skip invisible points for hover
       const px = xScale(data[i].x);
       const py = yScale(data[i].y);
       const dx = px - mouseX;
@@ -191,11 +192,33 @@
       }
     }
     hoveredData = found;
+    canvas.style.cursor = found?.url ? 'pointer' : 'crosshair';
   }
 
-  // function handleMouseLeave() {
-  //   hoveredData = null;
-  // }
+  function handleClick(event) {
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = (event.clientX - rect.left) * (containerWidth / rect.width);
+    const mouseY = (event.clientY - rect.top) * (containerHeight / rect.height);
+
+    let closest = null;
+    let minDist = radius + 3;
+    for (let i = 0; i < data.length; ++i) {
+      if (!data[i].isVisible) continue; // Skip invisible points for click
+      const px = xScale(data[i].x);
+      const py = yScale(data[i].y);
+      const dx = px - mouseX;
+      const dy = py - mouseY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDist) {
+        closest = data[i];
+        minDist = dist;
+      }
+    }
+
+    if (closest && closest.url) {
+      window.open(closest.url, '_blank');
+    }
+  }
 </script>
 
 <div class="chart-container">
@@ -203,6 +226,7 @@
     bind:this={canvas}
     width={containerWidth}
     height={containerHeight}
+    on:click={handleClick}
     style="width: {containerWidth}px; height: {containerHeight}px; display: block;"
     on:mousemove={handleMouseMove}
   />
