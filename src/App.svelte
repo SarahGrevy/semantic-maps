@@ -24,21 +24,46 @@
     .join(' ');
 }
 
+function downloadFilteredData() {
+  if (!filteredData.length) return;
+
+  // Convert data to CSV
+  const csv = Papa.unparse(filteredData);
+
+  // Create a blob and a temporary link
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", "filtered_data.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+
+
 
   let searchQuery = "";
   let showAnnotations = true;
 
-  $: filteredData = data.map(d => ({
-  ...d,
-  isHighlighted:
-    (selectedValues.size > 0 && selectedValues.size < uniqueValues.length) &&
-    selectedValues.has(d[domainColumn]) &&
-    (!startDate || d.date >= startDate) &&
-    (!endDate || d.date <= endDate),
-  isVisible:
-    !searchQuery ||
-    (d.text && d.text.toLowerCase().includes(searchQuery.toLowerCase()))
-}));
+
+  $: filteredData = data
+  .filter(d =>
+    // Only include points that meet the highlight criteria
+    (
+      (selectedValues.size === 0 || selectedValues.size === uniqueValues.length || selectedValues.has(d[domainColumn])) &&
+      (!startDate || d.date >= startDate) &&
+      (!endDate || d.date <= endDate) &&
+      (!searchQuery || (d.text && d.text.toLowerCase().includes(searchQuery.toLowerCase())))
+    )
+  )
+  .map(d => ({
+    ...d,
+    isHighlighted: true // All points passing the filter are considered highlighted
+  }));
+
+
 
 
   $: startPercent = allDates.length > 1 ? (startDateIndex / (allDates.length - 1)) * 100 : 0;
@@ -68,6 +93,7 @@
 
   function handleSelectionChange(event) {
     const selectedOptions = [...event.target.selectedOptions].map(o => o.value);
+    console.log('selectedValues', selectedOptions, 'uniqueValues', uniqueValues);
     
     // Check if all values are selected
     const allSelected = selectedOptions.length === uniqueValues.length;
@@ -90,17 +116,17 @@
   }
 
   function updateSelectedDates(start, end, fromIndices = false) {
-    if (fromIndices) {
-      // If we're updating from indices, convert them to actual dates
-      startDate = allDates[start] || allDates[0];
-      endDate = allDates[end] || allDates[allDates.length - 1];
-    } else {
-      // We're updating from actual date objects
-      startDate = start;
-      endDate = end;
-    }
-    showAnnotations = false;
+  console.log('updateSelectedDates', { start, end, fromIndices, allDatesLength: allDates.length, startDate, endDate });
+  if (fromIndices) {
+    startDate = allDates[start] || allDates[0];
+    endDate = allDates[end] || allDates[allDates.length - 1];
+  } else {
+    startDate = start;
+    endDate = end;
   }
+  console.log('after update', { startDate, endDate });
+  showAnnotations = false;
+}
 
   function updateDateIndices() {
     // Find closest date indices based on the current startDate and endDate
@@ -257,7 +283,7 @@
     .sort((a, b) => a - b)
     .map(t => new Date(t));
 
-    // Set initial date range to first week of the month
+    // Set initial date range to first day of the month
   if (allDates.length > 0) {
     const firstDay = allDates[0];
     const firstWeekEnd = new Date(firstDay);
@@ -326,8 +352,8 @@
 
       <div>
         <!-- Year Selection -->
-        <label>Select Year:</label>
-        <div class="year-buttons">
+        <label id="year-label">Select Year:</label>
+        <div class="year-buttons" role="group" aria-labelledby="year-label">
           {#each ['2023', '2022', '2021'] as year}
             <button 
               class:selected={selectedYear === year}
@@ -339,8 +365,8 @@
         </div>
 
         <!-- Month Selection -->
-        <label>Select Month:</label>
-        <select on:change={(e) => loadYearAndMonth(selectedYear, +e.target.value)}>
+        <label for="month-select">Select Month:</label>
+        <select id="month-select" on:change={(e) => loadYearAndMonth(selectedYear, +e.target.value)}>
           <option value="" disabled selected>Select a month</option>
           {#each monthOptions as { name, value }}
             <option value={value} selected={selectedMonth === value}>{name}</option>
@@ -383,12 +409,15 @@
         </div>
       </div>
 
-
-      <label for="file-upload">📁 Upload CSV:</label>
-      <input id="file-upload" type="file" accept=".csv" on:change={handleFileUpload} />
       
+
+      <!-- <label for="file-upload">📁 Upload CSV:</label>
+      <input id="file-upload" type="file" accept=".csv" on:change={handleFileUpload} />
+       -->
       <label for="search-input">🔍 Search Notes:</label>
       <input id="search-input" type="text" placeholder="Search..." on:input={handleSearch} />
+
+      
 
       {#if uniqueValues.length}
         <label for="value-select">✨ Status of Notes:</label>
@@ -398,12 +427,16 @@
           {/each}
         </select>
       {/if}
+
+      <button on:click={downloadFilteredData} disabled={!filteredData.length}>
+        📁 Download as CSV
+      </button>
       
 
-
+<!-- 
       <label for="opacity-slider">💡 Adjust Opacity:</label>
       <input id="opacity-slider" type="range" min="0.01" max="1" step="0.1" bind:value={opacity} on:input={handleOpacityChange} />
-      
+       -->
       
     </div>
 
@@ -421,7 +454,7 @@
           {endDate}      
         />
       {:else}
-        <p>Loading data...</p>
+        <p>Select year and month</p>
       {/if}
     </div>
   </div>
@@ -440,19 +473,7 @@
     text-align: center;
   }
 
-  .title {
-    font-size: 2rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-  }
 
-  .subtitle {
-    font-size: 1.1rem;
-    color: #666;
-    width: 60%;
-    margin: 0 auto;
-    line-height: 1.5;
-  }
 
   .content {
     display: flex;
@@ -507,7 +528,7 @@
     justify-content: center;
     align-items: center;
     background: #fff;
-    border-radius: 10px;
+    border-radius: 100px;
     min-height: 500px;
     padding: 1rem;
     /* box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.05); */
@@ -607,4 +628,20 @@
     color: white;
     font-weight: bold;
   }
+
+  .filter-panel button {
+  padding: 0.5rem;
+  font-size: 0.9rem;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  background-color: #eef5ff;
+  font-weight: 600;
+}
+
+.filter-panel button:disabled {
+  background-color: #ddd;
+  cursor: not-allowed;
+}
+
 </style>

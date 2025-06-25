@@ -8,12 +8,12 @@
 
   export let data = [];
   export let domainColumn = "";
-  export let opacity = 1;
-  export let selectedValues = new Set();
-  export let searchQuery = "";
+  export const opacity = 1;
+  export const selectedValues = new Set();
+  export const searchQuery = "";
   export let highlightedData = [];
-  export let startDate = null;
-  export let endDate = null;
+  export const startDate = null;
+  export const endDate = null;
 
   let canvas;
   let regl;
@@ -22,6 +22,7 @@
   let containerWidth = 800;
   let containerHeight = 600;
   const radius = 6;
+  let hoveredIndex = -1; // Track hovered index for WebGL
 
   $: highlightedSet = new Set(highlightedData.map(d => d.id));
   $: xDomain = [min(data, d => d.x), max(data, d => d.x)];
@@ -32,88 +33,72 @@
   $: yScale = scaleLinear()
     .domain(yDomain[0] === yDomain[1] ? [yDomain[0] - 1, yDomain[1] + 1] : yDomain)
     .range([containerHeight, 0]);
-  $: colorScale = scaleOrdinal()
-    .domain([...new Set(data.map(d => d[domainColumn]))])
-    .range(schemeCategory10);
+
+  $: yDomain = [min(data, d => d.y) -3, max(data, d => d.y)+3];
+  $: xDomain = [min(data, d => d.x) - 3, max(data, d => d.x) + 3];
+  
+  // $: colorScale = scaleOrdinal()
+  //   .domain([...new Set(data.map(d => d[domainColumn]))])
+  //   .range(schemeCategory10);
+  function getStatusColor(status) {
+  switch (status) {
+    case 'CURRENTLY_RATED_HELPFUL':
+      return '#2ca02c'; // green
+    case 'CURRENTLY_RATED_NOT_HELPFUL':
+      return '#d62728'; // red
+    case 'NEEDS_MORE_RATINGS':
+      return '#ff7f0e'; // yellow-orange
+    default:
+      return '#1f77b4'; // fallback blue
+  }
+}
+
 
   // --- OPTIMIZED: Use Typed Arrays for WebGL attributes ---
   let positions = null;
   let colors = null;
 
   $: if (data.length) {
-    // First, count how many points will be drawn (all points, but selected last)
-    const nonSelected = [];
-    const selected = [];
-
-    // Precompute min/max for date only once
-    const dateTimes = data.map(d => d.date.getTime());
-    const minDate = Math.min(...dateTimes);
-    const maxDate = Math.max(...dateTimes);
-
-    for (let i = 0; i < data.length; ++i) {
-      const d = data[i];
-      const isHighlighted = highlightedSet.has(d.id) || d.isHighlighted;
-      const isSelected = selectedValues.has(d[domainColumn]);
-      const isInDateRange = (!startDate || d.date >= startDate) && (!endDate || d.date <= endDate);
-      const isFullDateRange = startDate?.getTime() === minDate && endDate?.getTime() === maxDate;
-      const isVisible = d.isVisible; // Use isVisible from parent
-
-      let alpha = opacity;
-      if (!isVisible) {
-        alpha = 0; // Hide points that don't match the search
-      } else if ((isHighlighted || isSelected) && isInDateRange && !isFullDateRange) {
-        alpha = 1;
-      } else if (isInDateRange && !isFullDateRange && selectedValues.size === 0) {
-        alpha = 1;
-      } else if ((isHighlighted || isSelected) && isFullDateRange) {
-        alpha = 1;
-      }
-
-      const color = colorScale(d[domainColumn]) || '#1f77b4';
-      let rgb;
-      if (color.startsWith('#')) {
-        rgb = [
-          parseInt(color.slice(1, 3), 16) / 255,
-          parseInt(color.slice(3, 5), 16) / 255,
-          parseInt(color.slice(5, 7), 16) / 255
-        ];
-      } else if (color.startsWith('rgb')) {
-        const nums = color.match(/\d+/g).map(Number);
-        rgb = [nums[0] / 255, nums[1] / 255, nums[2] / 255];
-      } else {
-        rgb = [31 / 255, 119 / 255, 180 / 255];
-      }
-
-      const point = {
-        x: 2 * xScale(d.x) / containerWidth - 1,
-        y: 1 - 2 * yScale(d.y) / containerHeight,
-        rgb,
-        alpha
-      };
-
-      // If visible or selected/highlighted, push to selected for rendering on top
-      if (alpha === 1) {
-        selected.push(point);
-      } else {
-        nonSelected.push(point);
-      }
+  // All points in data are highlighted, so render them all with alpha = 1
+  const allPoints = data.map(d => {
+    // Get color based on status
+    const color = getStatusColor(d.currentStatus);
+    let rgb;
+    if (color.startsWith('#')) {
+      rgb = [
+        parseInt(color.slice(1, 3), 16) / 255,
+        parseInt(color.slice(3, 5), 16) / 255,
+        parseInt(color.slice(5, 7), 16) / 255
+      ];
+    } else if (color.startsWith('rgb')) {
+      const nums = color.match(/\d+/g).map(Number);
+      rgb = [nums[0] / 255, nums[1] / 255, nums[2] / 255];
+    } else {
+      rgb = [31 / 255, 119 / 255, 180 / 255]; // Fallback blue
     }
 
-    // Combine: non-selected first, then selected
-    const allPoints = [...selected, ...nonSelected];
-    positions = new Float32Array(allPoints.length * 2);
-    colors = new Float32Array(allPoints.length * 4);
+    return {
+      x: 2 * xScale(d.x) / containerWidth - 1,
+      y: 1 - 2 * yScale(d.y) / containerHeight,
+      rgb,
+      alpha: 1 // All points are fully opaque
+    };
+  });
 
-    for (let i = 0; i < allPoints.length; ++i) {
-      const p = allPoints[i];
-      positions[2 * i] = p.x;
-      positions[2 * i + 1] = p.y;
-      colors[4 * i] = p.rgb[0];
-      colors[4 * i + 1] = p.rgb[1];
-      colors[4 * i + 2] = p.rgb[2];
-      colors[4 * i + 3] = p.alpha;
-    }
+  // Create typed arrays for WebGL
+  positions = new Float32Array(allPoints.length * 2);
+  colors = new Float32Array(allPoints.length * 4);
+
+  for (let i = 0; i < allPoints.length; ++i) {
+    const p = allPoints[i];
+    positions[2 * i] = p.x;
+    positions[2 * i + 1] = p.y;
+    colors[4 * i] = p.rgb[0];
+    colors[4 * i + 1] = p.rgb[1];
+    colors[4 * i + 2] = p.rgb[2];
+    colors[4 * i + 3] = p.alpha;
   }
+}
 
   function drawWebGL() {
     if (!regl || !positions || !colors) return;
@@ -121,7 +106,7 @@
     drawPoints({
       position: positions,
       color: colors,
-      count: positions.length / 2
+      count: positions.length / 2 // or allPoints.length
     });
   }
 
@@ -140,13 +125,19 @@
         }
       `,
       frag: `
-        precision mediump float;
-        varying vec4 fragColor;
-        void main() {
-          float r = length(gl_PointCoord - 0.5);
-          if (r > 0.5) discard;
-          gl_FragColor = fragColor;
-        }
+precision mediump float;
+varying vec4 fragColor;
+
+void main() {
+  float r = length(gl_PointCoord - 0.5);
+  if (r > 0.5) {
+    discard;
+  } else {
+    gl_FragColor = fragColor;
+  }
+}
+
+
       `,
       attributes: {
         position: { buffer: regl.prop('position'), size: 2 },
@@ -157,6 +148,8 @@
     });
     drawWebGL();
   });
+
+  
 
   $: if (regl && positions && colors) {
     drawWebGL();
@@ -180,8 +173,8 @@
     let found = null;
     let minDist = radius + 3;
     for (let i = 0; i < data.length; ++i) {
-      if (!data[i].isVisible) continue; // Skip invisible points for hover
-      const px = xScale(data[i].x);
+      // Use screen coordinates for hover
+      const px = xScale(data[i].x); 
       const py = yScale(data[i].y);
       const dx = px - mouseX;
       const dy = py - mouseY;
@@ -191,34 +184,41 @@
         minDist = dist;
       }
     }
+ 
     hoveredData = found;
     canvas.style.cursor = found?.url ? 'pointer' : 'crosshair';
+
   }
+
+  // function handleMouseLeave() {
+  //   hoveredData = null;
+  // }
 
   function handleClick(event) {
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = (event.clientX - rect.left) * (containerWidth / rect.width);
-    const mouseY = (event.clientY - rect.top) * (containerHeight / rect.height);
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = (event.clientX - rect.left) * (containerWidth / rect.width);
+  const mouseY = (event.clientY - rect.top) * (containerHeight / rect.height);
 
-    let closest = null;
-    let minDist = radius + 3;
-    for (let i = 0; i < data.length; ++i) {
-      if (!data[i].isVisible) continue; // Skip invisible points for click
-      const px = xScale(data[i].x);
-      const py = yScale(data[i].y);
-      const dx = px - mouseX;
-      const dy = py - mouseY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < minDist) {
-        closest = data[i];
-        minDist = dist;
-      }
-    }
-
-    if (closest && closest.url) {
-      window.open(closest.url, '_blank');
+  let closest = null;
+  let minDist = radius + 3;
+  for (let i = 0; i < data.length; ++i) {
+    const px = xScale(data[i].x);
+    const py = yScale(data[i].y);
+    const dx = px - mouseX;
+    const dy = py - mouseY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < minDist) {
+      closest = data[i];
+      minDist = dist;
     }
   }
+
+  if (closest && closest.url) {
+    window.open(closest.url, '_blank'); // Open in new tab
+    // OR: window.location.href = closest.url; // For same-tab nav
+  }
+}
+
 </script>
 
 <div class="chart-container">
@@ -231,7 +231,7 @@
     on:mousemove={handleMouseMove}
   />
   {#if hoveredData}
-    <DetailCard {hoveredData} {data} {domainColumn} {colorScale} />
+    <DetailCard {hoveredData} {data} {domainColumn} {getStatusColor} />
   {/if}
 </div>
 
@@ -243,12 +243,14 @@
     align-items: center;
     flex-direction: column;
     width: 100%;
-    height: 100%;
+    /* height: 100%; */
+    padding-bottom: 50%;
   }
   canvas {
     cursor: crosshair;
     border-radius: 8px;
     background-color: white;
+    height: 1000px;
     max-width: 100%;
     height: auto;
   }

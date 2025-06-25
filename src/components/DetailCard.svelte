@@ -6,7 +6,7 @@
   export let hoveredData;
   export let domainColumn;
   export let data;
-  export let colorScale;
+  export let getStatusColor;
   
   let filteredData = [];
   let dates = [];
@@ -17,16 +17,16 @@
 
   // const colorScale = scaleOrdinal(schemeCategory10);
 
-  onMount(() => {
-      colorScale.domain(data.map(d => d[domainColumn]));
-  });
+  // onMount(() => {
+  //     getStatusColor.domain(data.map(d => d[domainColumn]));
+  // });
   
 </script>
 
 <div class="detail-card">
   {#if hoveredData}
   <h1>{hoveredData.title}</h1>
-  <span style="background: {colorScale(hoveredData[domainColumn])};">
+  <span style="background: {getStatusColor(hoveredData[domainColumn])};">
       {hoveredData[domainColumn]}</span>
   <h2>{hoveredData.date.toISOString().split('T')[0]}</h2>  
   <p> {hoveredData.text}</p>
@@ -44,8 +44,8 @@
     border-top: 1px solid rgba(0, 0, 0, 1);
     /* box-shadow: 0 2px 5px rgba(0,0,0,0.3); */
     height: fit-content;
-    max-height: 500px;
-    max-width: 800px;
+    height: 500px;
+    width: 800px;
     overflow-y: auto;
     line-height: 1.5;
   }
