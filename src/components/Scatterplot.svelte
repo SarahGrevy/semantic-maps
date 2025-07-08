@@ -44,12 +44,12 @@
   //   .range([containerHeight, 0]);
 
   const xExtent = [
-    min(data, d => d.x) - 8,// adjust -10 for more or less padding 
-    max(data, d => d.x) + 8
+    min(data, d => d.x) - 11,// adjust -10 for more or less padding 
+    max(data, d => d.x) + 11
   ];
   const yExtent = [
-    min(data, d => d.y) - 8,
-    max(data, d => d.y) + 8
+    min(data, d => d.y) - 11,
+    max(data, d => d.y) + 11
   ];
   function getStatusColor(status) {
   switch (status) {
