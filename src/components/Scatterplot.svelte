@@ -29,18 +29,28 @@
   $: xDomain = [min(data, d => d.x), max(data, d => d.x)];
   $: yDomain = [min(data, d => d.y), max(data, d => d.y)];
   $: xScale = scaleLinear()
-    .domain(xDomain[0] === xDomain[1] ? [xDomain[0] - 1, xDomain[1] + 1] : xDomain)
-    .range([0, containerWidth]);
+  .domain(xExtent)
+  .range([0, containerWidth]);
+
   $: yScale = scaleLinear()
-    .domain(yDomain[0] === yDomain[1] ? [yDomain[0] - 1, yDomain[1] + 1] : yDomain)
+    .domain(yExtent)
     .range([containerHeight, 0]);
 
-  $: yDomain = [min(data, d => d.y) -3, max(data, d => d.y)+3];
-  $: xDomain = [min(data, d => d.x) - 3, max(data, d => d.x) + 3];
-  
-  // $: colorScale = scaleOrdinal()
-  //   .domain([...new Set(data.map(d => d[domainColumn]))])
-  //   .range(schemeCategory10);
+  // $: xScale = scaleLinear()
+  //   .domain(xDomain[0] === xDomain[1] ? [xDomain[0] - 1, xDomain[1] + 1] : xDomain)
+  //   .range([0, containerWidth]);
+  // $: yScale = scaleLinear()
+  //   .domain(yDomain[0] === yDomain[1] ? [yDomain[0] - 1, yDomain[1] + 1] : yDomain)
+  //   .range([containerHeight, 0]);
+
+  const xExtent = [
+    min(data, d => d.x) - 8,// adjust -10 for more or less padding 
+    max(data, d => d.x) + 8
+  ];
+  const yExtent = [
+    min(data, d => d.y) - 8,
+    max(data, d => d.y) + 8
+  ];
   function getStatusColor(status) {
   switch (status) {
     case 'CURRENTLY_RATED_HELPFUL':
@@ -53,6 +63,8 @@
       return '#1f77b4'; // fallback blue
   }
 }
+
+
 
 
   // --- OPTIMIZED: Use Typed Arrays for WebGL attributes ---
@@ -82,7 +94,7 @@
       x: 2 * xScale(d.x) / containerWidth - 1,
       y: 1 - 2 * yScale(d.y) / containerHeight,
       rgb,
-      alpha: d.currentStatus === 'NEEDS_MORE_RATINGS' ? 0.56 : 0.7
+      alpha: d.currentStatus === 'NEEDS_MORE_RATINGS' ? 0.6 : 0.8
 
     };
   });
