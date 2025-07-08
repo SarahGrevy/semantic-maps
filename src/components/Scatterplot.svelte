@@ -5,10 +5,11 @@
   import { scaleLinear, scaleOrdinal } from 'd3-scale';
   import { min, max } from 'd3-array';
   import reglConstructor from 'regl';
+  
 
   export let data = [];
   export let domainColumn = "";
-  export const opacity = 1;
+  export const opacity = 0.6;
   export const selectedValues = new Set();
   export const searchQuery = "";
   export let highlightedData = [];
@@ -47,7 +48,7 @@
     case 'CURRENTLY_RATED_NOT_HELPFUL':
       return '#d62728'; // red
     case 'NEEDS_MORE_RATINGS':
-      return '#ff7f0e'; // yellow-orange
+      return '#808080'; // yellow-orange
     default:
       return '#1f77b4'; // fallback blue
   }
@@ -81,7 +82,8 @@
       x: 2 * xScale(d.x) / containerWidth - 1,
       y: 1 - 2 * yScale(d.y) / containerHeight,
       rgb,
-      alpha: 1 // All points are fully opaque
+      alpha: d.currentStatus === 'NEEDS_MORE_RATINGS' ? 0.56 : 0.7
+
     };
   });
 
@@ -110,44 +112,50 @@
     });
   }
 
-  onMount(() => {
-    regl = reglConstructor({ canvas });
-    drawPoints = regl({
-      vert: `
-        precision mediump float;
-        attribute vec2 position;
-        attribute vec4 color;
-        varying vec4 fragColor;
-        void main() {
-          fragColor = color;
-          gl_Position = vec4(position, 0, 1);
-          gl_PointSize = ${radius * 2}.0;
+onMount(() => {
+  regl = reglConstructor({ canvas });
+
+  drawPoints = regl({
+    vert: `
+      precision mediump float;
+      attribute vec2 position;
+      attribute vec4 color;
+      varying vec4 fragColor;
+
+      void main() {
+        fragColor = color;
+        gl_Position = vec4(position, 0, 1);
+        gl_PointSize = ${radius * 2}.0;
+      }
+    `,
+
+    frag: `
+      precision mediump float;
+      varying vec4 fragColor;
+
+      void main() {
+        float r = length(gl_PointCoord - 0.5);
+        if (r > 0.5) {
+          discard;
+        } else {
+          gl_FragColor = fragColor;
         }
-      `,
-      frag: `
-precision mediump float;
-varying vec4 fragColor;
-
-void main() {
-  float r = length(gl_PointCoord - 0.5);
-  if (r > 0.5) {
-    discard;
-  } else {
-    gl_FragColor = fragColor;
-  }
-}
+      }
+    `,
 
 
-      `,
-      attributes: {
-        position: { buffer: regl.prop('position'), size: 2 },
-        color: { buffer: regl.prop('color'), size: 4 }
-      },
-      count: regl.prop('count'),
-      primitive: 'points'
-    });
-    drawWebGL();
+
+    attributes: {
+      position: { buffer: regl.prop('position'), size: 2 },
+      color: { buffer: regl.prop('color'), size: 4 }
+    },
+    count: regl.prop('count'),
+    primitive: 'points'
   });
+
+  drawWebGL();
+});
+
 
   
 

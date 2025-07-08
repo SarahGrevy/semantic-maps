@@ -433,8 +433,8 @@ function downloadFilteredData() {
       </button>
       
 
-<!-- 
-      <label for="opacity-slider">💡 Adjust Opacity:</label>
+
+      <!-- <label for="opacity-slider">💡 Adjust Opacity:</label>
       <input id="opacity-slider" type="range" min="0.01" max="1" step="0.1" bind:value={opacity} on:input={handleOpacityChange} />
        -->
       
@@ -528,7 +528,7 @@ function downloadFilteredData() {
     justify-content: center;
     align-items: center;
     background: #fff;
-    border-radius: 100px;
+    border-radius: 10px;
     min-height: 500px;
     padding: 1rem;
     /* box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.05); */
