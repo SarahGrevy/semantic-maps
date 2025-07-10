@@ -349,6 +349,8 @@ function downloadFilteredData() {
     </details>
   </div>
 
+  
+
 
       <div>
         <!-- Year Selection -->
@@ -419,14 +421,14 @@ function downloadFilteredData() {
 
       
 
-      {#if uniqueValues.length}
+      <!-- {#if uniqueValues.length}
         <label for="value-select">✨ Status of Notes:</label>
         <select id="value-select" multiple size="5" class="multi-select" on:change={handleSelectionChange}>
           {#each uniqueValues as value}
             <option value={value}>{formatLabel(value)}</option>
           {/each}
         </select>
-      {/if}
+      {/if} -->
 
       <button on:click={downloadFilteredData} disabled={!filteredData.length}>
         📁 Download as CSV
@@ -471,6 +473,7 @@ function downloadFilteredData() {
 
   .title-section {
     text-align: center;
+    
   }
 
 
