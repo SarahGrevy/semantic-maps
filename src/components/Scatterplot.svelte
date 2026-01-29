@@ -208,7 +208,7 @@
 
 <div class="chart-container">
   <div class="legend">
-    <div class="legend-title">✨ Filter by status of Notes:</div>
+    <div class="legend-title">✨ Click below to filter by status of Notes:</div>
     <div class="legend-items">
       <div
         class="legend-item {selectedStatus === 'CURRENTLY_RATED_HELPFUL' ? 'active' : ''}"

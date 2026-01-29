@@ -180,7 +180,8 @@ function downloadFilteredData() {
   }
 
   function formatDateInput(date) {
-    return date ? date.toISOString().split('T')[0] : '';
+    if (!date || typeof date !== 'object') return '';
+    return date.toISOString ? date.toISOString().split('T')[0] : '';
   }
 
   function handleFileUpload(event) {
@@ -242,7 +243,7 @@ function downloadFilteredData() {
     showAnnotations = false;
   }
 
-  let selectedYear = '2023'; // Default year
+  let selectedYear = '2026'; // Default year
 
   let selectedMonth = null; // null until selected
 
@@ -318,8 +319,13 @@ function downloadFilteredData() {
 <!-- App Layout -->
 <div class="container">
   <div class="title-section">
-    <!-- <h1 class="title">Interactive Semantic Map [DEMO]</h1> -->
-    <!-- <p class="subtitle">The default semantic map contains data from three organizations in North Carolina. <a href = "https://peacemakeronline.com/">Carolina Peacemaker</a> and <a href = "https://borderbelt.org">Border Belt</a> are local news organizations and <a href= "https://www.nccoast.org/about-us/">NC Coastal Federation</a> is a nonprofit focused on coastal restoration.</p> -->
+    <h1 class="title">Community Notes Explorer</h1>
+    <p class="subtitle">
+      Discover how Community Notes cluster and relate to one another. Use the interactive map below to explore themes, 
+      trends, and connections across fact-checking narratives. Select a year and date range to get started. <br><br>
+       <i>For more information about how to use the map, <a href="https://daisy-attention-f69.notion.site/Community-Notes-Tracker-2f50b622b933801d9b7bd103eed470b2?pvs=74">
+       click here. <a> </i>
+    </p>
   </div>
 
   <div class="content">
@@ -356,7 +362,7 @@ function downloadFilteredData() {
         <!-- Year Selection -->
         <label id="year-label">Select Year:</label>
         <div class="year-buttons" role="group" aria-labelledby="year-label">
-          {#each ['2023', '2022', '2021'] as year}
+          {#each ['2026'] as year}
             <button 
               class:selected={selectedYear === year}
               on:click={() => loadYearAndMonth(year, selectedMonth)}
@@ -434,6 +440,9 @@ function downloadFilteredData() {
         📁 Download as CSV
       </button>
       
+      <p class="attribution">
+        This project was created with support from the Digital Democracy Center and Tow Center for Digital Journalism.
+      </p>
 
 
       <!-- <label for="opacity-slider">💡 Adjust Opacity:</label>
@@ -473,7 +482,33 @@ function downloadFilteredData() {
 
   .title-section {
     text-align: center;
-    
+    margin-bottom: 2rem;
+    padding: 2rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px;
+  }
+
+  .title {
+    margin: 0;
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+  }
+
+  .subtitle {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 300;
+    line-height: 1.6;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .subtitle i {
+    font-style: italic;
+    font-weight: 400;
   }
 
 
@@ -647,6 +682,13 @@ function downloadFilteredData() {
   cursor: not-allowed;
 }
 
+.attribution {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 1rem;
+  text-align: center;
+  line-height: 1.4;
+}
 
 
 </style>

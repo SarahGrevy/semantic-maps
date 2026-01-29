@@ -25,11 +25,19 @@
 
 <div class="detail-card">
   {#if hoveredData}
+  {#if hoveredData.title}
   <h1>{hoveredData.title}</h1>
+  {/if}
+  {#if hoveredData[domainColumn]}
   <span style="background: {getStatusColor(hoveredData[domainColumn])};">
       {hoveredData[domainColumn]}</span>
-  <h2>{hoveredData.date.toISOString().split('T')[0]}</h2>  
-  <p> {hoveredData.text}</p>
+  {/if}
+  {#if hoveredData.date}
+  <h2>{hoveredData.date.toISOString().split('T')[0]}</h2>
+  {/if}
+  {#if hoveredData.text}
+  <p>{hoveredData.text}</p>
+  {/if}
   {:else}
   <p>Hover over a circle to see details here.</p>
   {/if}
