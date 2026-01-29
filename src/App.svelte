@@ -269,7 +269,7 @@ function downloadFilteredData() {
 
   if (!year || month === null) return; // Wait until both are selected
 
-  const response = await fetch(`/semantic-maps/${year}.csv`);
+  const response = await fetch(`/${year}.csv`);
   const csvText = await response.text();
   parseCSV(csvText);
 

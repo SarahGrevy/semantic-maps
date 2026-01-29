@@ -2,6 +2,8 @@ import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import path from 'path'
 
+
+
 export default defineConfig({
   plugins: [svelte()],
   resolve: {
@@ -11,8 +13,11 @@ export default defineConfig({
       "$routes": path.resolve("./src/routes"),
     }
   },
-  base: '/semantic-maps/', // Ensure this matches your repo name EXACTLY
+  base: '/', // Custom domain serves from root
   build: {
     outDir: 'dist' // Use 'dist' since you're using the `gh-pages` branch
   }
+  
 })
+
+
